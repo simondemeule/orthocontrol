@@ -10,3 +10,4 @@ Install by running `sh setup.sh`. Activate the environment with `source env/bin/
 - Set `retry_interval` to set the time interval (in seconds) between retries.
 - Set `retry_restart_MIDI` to request a MIDI server restart whenever the connection is lost. This might be necessary to allow the Ortho Remote to reconnect. This might also mess with other MIDI devices, I haven't investigated that in depth.
 
+Feel free to strip out the Ortho Remote specific logic and integrate this with whatever encoder controller you have!
