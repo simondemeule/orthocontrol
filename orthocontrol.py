@@ -99,10 +99,10 @@ while True:
             print(f"Port closed: '{port_name}'")
         except Exception:
             print(f"Port failed to open or encountered an error: '{port_name}'")
-        if retry_restart_MIDI:
-            print("Restarting MIDI server")
-            MIDIRestart()
     else:
         print(f"Port unavaliable: '{port_name}'")
         print(f"Currently avaliable ports: {ports}")
+    if retry_restart_MIDI:
+        print("Restarting MIDI server")
+        MIDIRestart()
     time.sleep(retry_interval)
