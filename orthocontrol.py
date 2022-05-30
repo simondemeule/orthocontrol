@@ -52,24 +52,16 @@ def play():
     tap(CODE_PLAY)
 
 scroll_last = None
-# scroll_last_time = None
 click_last = 0
 
 def callback(message, delta):
     global scroll_last
-    # global scroll_last_time
     global click_last
     if message[0][0] == 176:
-        scroll_now = message[0][2]
-        # scroll_now_time = time.perf_counter()
-        if scroll_now != scroll_last:
-            if scroll_now is not None and scroll_last is not None:
-                # quadruple = (scroll_now_time - scroll_last_time) < 0.01
-                quadruple = False
-                volume(scroll_now > scroll_last, quadruple)
-                # volume(scroll_now > scroll_last)
-            scroll_last = scroll_now
-            # scroll_last_time = scroll_now_time
+        if message[0][2] == 1:
+            volume(True)
+        elif message[0][2] == 127:
+            volume(False)
     elif message[0][0] == 144 or message[0][0] == 128:
         click_now = message[0][2] == 100
         if click_now != click_last:
@@ -77,31 +69,70 @@ def callback(message, delta):
                 play()
             click_last = click_now
 
-port_name = "Ortho Remote Bluetooth"
-retry_interval = 5
+port_name = "ortho remote Bluetooth"
+retry_interval = 1
 retry_restart_MIDI = True
 
-midi = rtmidi.MidiIn()
+midi_in = rtmidi.MidiIn()
+midi_out = rtmidi.MidiOut()
+
+if retry_restart_MIDI:
+    print("Restarting MIDI server")
+    MIDIRestart()
+
+"""
+OR1 SYSEX SPEC
+strt | TE       OR1 | cmd  addr values | end
+-----|--------------|------------------|----
+F0   | 00 20 76 02  | xx   xx   xx ... | F7
+
+cmd
+00      write
+01      read
+
+addr    setting                            default     note
+00      midi channel                       0
+01      midi cc                            1
+02      midi cc abs (0 or 1)               1           set to 1 to enable absolute mode
+03      midi note                          60
+04      midi velocity                      100
+05      disable hid                        0           set to 1 to disable hid - will restart remote
+06      set cc absolute value              63          write 63 to reset
+
+values
+write   list of values for consecutive addresses after addr
+read    number of consecutive addresses to read after addr (0 = read all)
+        - response msg can be used to write those values back
+
+EXAMPLES
+F0 00 20 76 02 00 01 0e F7     set send cc 14
+F0 00 20 76 02 01 00 00 F7     read all
+"""
 
 while True:
-    ports = midi.get_ports()
-    if port_name in ports:
+    ports_in = midi_in.get_ports()
+    ports_out = midi_out.get_ports()
+    if port_name in ports_in and port_name in ports_out:
         try:
-            with midi.open_port(ports.index(port_name)):
+            with midi_in.open_port(ports_in.index(port_name)) as port_in, midi_out.open_port(ports_out.index(port_name)) as port_out:
                 print(f"Port opened successfully: '{port_name}'")
-                midi.set_callback(callback)
+                # enable relative mode through sysex
+                midi_out.send_message([0xF0, 0x00, 0x20, 0x76, 0x02, 0x00, 0x02, 0x00, 0xF7])
+                midi_in.set_callback(callback)
                 while True:
                     time.sleep(retry_interval)
-                    ports = midi.get_ports()
-                    if not port_name in ports:
+                    ports_in = midi_in.get_ports()
+                    ports_out = midi_out.get_ports()
+                    if not port_name in ports_in or not port_name in ports_out:
                         break
-                midi.cancel_callback()
+                midi_in.cancel_callback()
             print(f"Port closed: '{port_name}'")
         except Exception:
             print(f"Port failed to open or encountered an error: '{port_name}'")
     else:
         print(f"Port unavaliable: '{port_name}'")
-        print(f"Currently avaliable ports: {ports}")
+        print(f"Currently avaliable ports (in):  {ports_in}")
+        print(f"Currently avaliable ports (out): {ports_out}")
     if retry_restart_MIDI:
         print("Restarting MIDI server")
         MIDIRestart()
