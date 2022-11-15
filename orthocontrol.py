@@ -1,11 +1,43 @@
+import sys
 import rtmidi
 import time
+import getopt
 from Quartz.CoreGraphics import CGEventPost
 from Quartz.CoreGraphics import kCGHIDEventTap
 from Quartz.CoreGraphics import kCGEventFlagMaskShift
 from Quartz.CoreGraphics import kCGEventFlagMaskAlternate
 from AppKit import NSEvent
 from CoreMIDI import MIDIRestart
+
+options, _ = getopt.getopt(sys.argv[1:], [], ["midi-name=", "midi-restart", "midi-retry-interval=", "--midi-sysex-disable"])
+options = dict(options)
+
+if not ("--midi-name" in options):
+    print("Missing --midi-name argument")
+    sys.exit(1)
+
+port_name = options["--midi-name"]
+
+if "--midi-restart" in options:
+    restart_enable = True
+else:
+    restart_enable = False
+
+if "--midi-restart-interval" in options:
+    retry_interval = float(options["--midi-restart-interval"])
+else:
+    retry_interval = 1.0
+
+if "--midi-sysex-disable" in options:
+    sysex_disable = True
+else:
+    sysex_disable = False
+
+print("Applied arguments:")
+print(f"  MIDI Port name:        '{port_name}'")
+print(f"  MIDI restart enabled:  {restart_enable}")
+print(f"  MIDI retry interval:   {retry_interval}")
+print(f"  MIDI sysex disable:    {sysex_disable}")
 
 # bits taken from:
 # https://github.com/boppreh/keyboard/blob/master/keyboard/_darwinkeyboard.py
@@ -69,14 +101,10 @@ def callback(message, delta):
                 play()
             click_last = click_now
 
-port_name = "ortho remote Bluetooth"
-retry_interval = 1
-retry_restart_MIDI = True
-
 midi_in = rtmidi.MidiIn()
 midi_out = rtmidi.MidiOut()
 
-if retry_restart_MIDI:
+if restart_enable:
     print("Restarting MIDI server")
     MIDIRestart()
 
@@ -116,8 +144,9 @@ while True:
         try:
             with midi_in.open_port(ports_in.index(port_name)) as port_in, midi_out.open_port(ports_out.index(port_name)) as port_out:
                 print(f"Port opened successfully: '{port_name}'")
-                # enable relative mode through sysex
-                midi_out.send_message([0xF0, 0x00, 0x20, 0x76, 0x02, 0x00, 0x02, 0x00, 0xF7])
+                if not sysex_disable:
+                    print(f"Sending sysex to enable relative mode")
+                    midi_out.send_message([0xF0, 0x00, 0x20, 0x76, 0x02, 0x00, 0x02, 0x00, 0xF7])
                 midi_in.set_callback(callback)
                 while True:
                     time.sleep(retry_interval)
@@ -133,7 +162,7 @@ while True:
         print(f"Port unavaliable: '{port_name}'")
         print(f"Currently avaliable ports (in):  {ports_in}")
         print(f"Currently avaliable ports (out): {ports_out}")
-    if retry_restart_MIDI:
+    if restart_enable:
         print("Restarting MIDI server")
         MIDIRestart()
     time.sleep(retry_interval)
