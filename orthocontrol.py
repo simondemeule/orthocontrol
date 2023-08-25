@@ -1,3 +1,4 @@
+import subprocess
 import sys
 import rtmidi
 import time
@@ -9,7 +10,7 @@ from Quartz.CoreGraphics import kCGEventFlagMaskAlternate
 from AppKit import NSEvent
 from CoreMIDI import MIDIRestart
 
-options, _ = getopt.getopt(sys.argv[1:], [], ["midi-name=", "midi-restart", "midi-retry-interval=", "--midi-sysex-disable"])
+options, _ = getopt.getopt(sys.argv[1:], [], ["midi-name=", "midi-restart", "midi-restart-interval=", "midi-sysex", "midi-notifications"])
 options = dict(options)
 
 if not ("--midi-name" in options):
@@ -24,20 +25,26 @@ else:
     restart_enable = False
 
 if "--midi-restart-interval" in options:
-    retry_interval = float(options["--midi-restart-interval"])
+    restart_interval = float(options["--midi-restart-interval"])
 else:
-    retry_interval = 1.0
+    restart_interval = 1.0
 
-if "--midi-sysex-disable" in options:
-    sysex_disable = True
+if "--midi-sysex" in options:
+    sysex_enable = True
 else:
-    sysex_disable = False
+    sysex_enable = False
+
+if "--midi-notifications" in options:    
+    notification_enable = True
+else:
+    notification_enable = False
 
 print("Applied arguments:")
-print(f"  MIDI Port name:        '{port_name}'")
-print(f"  MIDI restart enabled:  {restart_enable}")
-print(f"  MIDI retry interval:   {retry_interval}")
-print(f"  MIDI sysex disable:    {sysex_disable}")
+print(f"  MIDI port name:        {port_name}'")
+print(f"  MIDI restart:          {restart_enable}")
+print(f"  MIDI restart interval: {restart_interval}")
+print(f"  MIDI sysex:            {sysex_enable}")
+print(f"  MIDI notifications:    {notification_enable}")
 
 # bits taken from:
 # https://github.com/boppreh/keyboard/blob/master/keyboard/_darwinkeyboard.py
@@ -108,6 +115,17 @@ if restart_enable:
     print("Restarting MIDI server")
     MIDIRestart()
 
+notification_command = '''
+on run argv
+  display notification (item 2 of argv) with title (item 1 of argv)
+end run
+'''
+
+def notification(notification_message):
+    print(notification_message)
+    if notification_enable:
+        subprocess.call(['osascript', '-e', notification_command, 'OrthoControl', notification_message])
+
 """
 OR1 SYSEX SPEC
 strt | TE       OR1 | cmd  addr values | end
@@ -143,26 +161,26 @@ while True:
     if port_name in ports_in and port_name in ports_out:
         try:
             with midi_in.open_port(ports_in.index(port_name)) as port_in, midi_out.open_port(ports_out.index(port_name)) as port_out:
-                print(f"Port opened successfully: '{port_name}'")
-                if not sysex_disable:
+                notification(f"Port opened successfully: '{port_name}'")
+                if sysex_enable:
                     print(f"Sending sysex to enable relative mode")
                     midi_out.send_message([0xF0, 0x00, 0x20, 0x76, 0x02, 0x00, 0x02, 0x00, 0xF7])
                 midi_in.set_callback(callback)
                 while True:
-                    time.sleep(retry_interval)
+                    time.sleep(restart_interval)
                     ports_in = midi_in.get_ports()
                     ports_out = midi_out.get_ports()
                     if not port_name in ports_in or not port_name in ports_out:
                         break
                 midi_in.cancel_callback()
-            print(f"Port closed: '{port_name}'")
+            notification(f"Port closed: '{port_name}'")
         except Exception:
-            print(f"Port failed to open or encountered an error: '{port_name}'")
+            notification(f"Port failed to open or encountered an error: '{port_name}'")         
     else:
-        print(f"Port unavaliable: '{port_name}'")
+        notification(f"Port unavaliable: '{port_name}'")
         print(f"Currently avaliable ports (in):  {ports_in}")
         print(f"Currently avaliable ports (out): {ports_out}")
     if restart_enable:
-        print("Restarting MIDI server")
+        notification("Restarting MIDI server")
         MIDIRestart()
-    time.sleep(retry_interval)
+    time.sleep(restart_interval)
